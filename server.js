@@ -221,8 +221,11 @@ const audioStorage = multer.diskStorage({
 });
 const audioUpload = multer({ storage: audioStorage });
 app.post("/upload-audio", audioUpload.single("audio"), (req, res) => {
-  res.json({ url: `http://localhost:5000/uploads/audio/${req.file.filename}` });
+  res.json({
+    url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
+  });
 });
+
 
 /* ================= MEDIA UPLOAD ================= */
 const mediaStorage = multer.diskStorage({
@@ -249,9 +252,14 @@ const mediaUpload = multer({
 
 app.post("/upload-media", verifyToken, mediaUpload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+
   const folder = req.file.mimetype.startsWith("image") ? "images" : "videos";
-  res.json({ url: `http://localhost:5000/uploads/${folder}/${req.file.filename}` });
+
+  res.json({
+    url: `${process.env.BASE_URL}/uploads/${folder}/${req.file.filename}`,
+  });
 });
+
 
 /* ================= SOCKET.IO ================= */
 const io = socketIO(server, {
@@ -485,7 +493,8 @@ socket.on("editMessage", async ({ messageId, newText }) => {
 });
 
 /* ================= START SERVER ================= */
-server.listen(5000, () => {
-  console.log("✅ Server running on port 5000");
-});
+const PORT = process.env.PORT || 5000;
 
+server.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});

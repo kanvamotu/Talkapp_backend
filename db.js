@@ -1,13 +1,10 @@
+require("dotenv").config(); // Load .env variables
 const mysql = require("mysql2/promise");
 
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "1234",
-  database: "chat_app",
-  port: 3306,
-  waitForConnections: true,
-  connectionLimit: 10
-});
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is not set in environment variables!");
+}
+
+const pool = mysql.createPool(process.env.DATABASE_URL);
 
 module.exports = pool;
