@@ -1,6 +1,19 @@
 require("dotenv").config();
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 
-const pool = mysql.createPool(process.env.MYSQL_URL);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
-module.exports = pool;
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL connected");
+});
+
+pool.on("error", (err) => {
+  console.error("❌ PostgreSQL error:", err);
+});
+
+module.exports = {
+  query: (text, params) => pool.query(text, params),
+  pool,
+};

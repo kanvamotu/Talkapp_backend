@@ -55,8 +55,7 @@ app.get("/search-user", verifyToken, async (req, res) => {
     const { username, userId } = req.query;
     if (!username) return res.status(400).json({ message: "Username is required" });
 
-    const [rows] = await db.query(
-      "SELECT id, username FROM users WHERE username LIKE ? AND id != ?",
+    const {rows} = await db.query( "SELECT id, username FROM users WHERE username LIKE $1 AND id != $2" ,
       [`%${username}%`, userId]
     );
     res.json(rows);
@@ -70,21 +69,32 @@ app.get("/search-user", verifyToken, async (req, res) => {
 app.post("/addUser", verifyToken, async (req, res) => {
   try {
     const { username, password, email } = req.body;
-    if (!username || !password || !email) return res.status(400).json({ error: "All fields required" });
+    if (!username || !password || !email)
+      return res.status(400).json({ error: "All fields required" });
 
-    const [existing] = await db.query("SELECT * FROM users WHERE username = ?", [username]);
-    if (existing.length > 0) return res.status(400).json({ error: "Username already taken" });
+    // Check if username exists
+    const { rows: existing } = await db.query(
+      "SELECT * FROM users WHERE username = $1",
+      [username]
+    );
+    if (existing.length > 0)
+      return res.status(400).json({ error: "Username already taken" });
 
+    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    const [result] = await db.query(
-      "INSERT INTO users (username, password, email) VALUES (?,?,?)",
+
+    // Insert user and return the id
+    const { rows } = await db.query(
+      "INSERT INTO users (username, password, email) VALUES ($1,$2,$3) RETURNING id",
       [username, hashedPassword, email]
     );
 
-    res.status(201).json({ message: "User added successfully", userId: result.insertId });
+    res.status(201).json({ message: "User added successfully", userId: rows[0].id });
   } catch (err) {
     console.error("ADD USER ERROR:", err);
-    if (err.code === "ER_DUP_ENTRY") return res.status(400).json({ error: "Username or Email already exists" });
+    // PostgreSQL unique violation code
+    if (err.code === "23505") // unique_violation
+      return res.status(400).json({ error: "Username or Email already exists" });
     res.status(500).json({ error: err.message });
   }
 });
@@ -93,14 +103,24 @@ app.post("/addUser", verifyToken, async (req, res) => {
 app.post("/register", authLimiter, async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    if (!username || !email || !password) return res.status(400).json({ message: "All fields required" });
+    if (!username || !email || !password)
+      return res.status(400).json({ message: "All fields required" });
 
     const hashed = await bcrypt.hash(password, 10);
-    await db.query("INSERT INTO users(username,email,password) VALUES (?,?,?)", [username, email, hashed]);
+
+    // Insert user and return the id
+    await db.query(
+      "INSERT INTO users(username, email, password) VALUES ($1, $2, $3)",
+      [username, email, hashed]
+    );
+
     res.json({ message: "Registered successfully" });
   } catch (err) {
     console.error("REGISTER ERROR:", err);
-    if (err.code === "ER_DUP_ENTRY") return res.status(400).json({ message: "Email already registered" });
+    // PostgreSQL unique constraint violation code
+    if (err.code === "23505") // unique_violation
+      return res.status(400).json({ message: "Email already registered" });
+
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -109,14 +129,20 @@ app.post("/register", authLimiter, async (req, res) => {
 app.post("/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
-    const [rows] = await db.query("SELECT * FROM users WHERE email=?", [email]);
-    if (!rows.length) return res.status(401).json({ message: "Invalid credentials" });
+
+    // PostgreSQL uses $1 instead of ? and returns { rows }
+    const { rows } = await db.query("SELECT * FROM users WHERE email = $1", [email]);
+
+    if (!rows.length)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const user = rows[0];
     const ok = await bcrypt.compare(password, user.password);
-    if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+    if (!ok)
+      return res.status(401).json({ message: "Invalid credentials" });
 
     const payload = { id: String(user.id), username: user.username };
+
     res.json({
       accessToken: generateAccessToken(payload),
       refreshToken: generateRefreshToken(payload),
@@ -131,7 +157,7 @@ app.post("/login", authLimiter, async (req, res) => {
 /* ================= GET ALL USERS ================= */
 app.get("/users", verifyToken, async (req, res) => {
   try {
-    const [rows] = await db.query("SELECT id, username FROM users");
+    const { rows } = await db.query("SELECT id, username FROM users");
     res.json(rows);
   } catch (err) {
     console.error("❌ /users error:", err);
@@ -143,16 +169,25 @@ app.get("/users", verifyToken, async (req, res) => {
 app.get("/chat-users/:userId", verifyToken, async (req, res) => {
   try {
     const userId = req.params.userId;
+
+    // PostgreSQL uses $1, $2, $3 placeholders
     const sql = `
       SELECT DISTINCT
-        CASE WHEN sender_id = ? THEN receiver_id ELSE sender_id END AS chat_user_id
+        CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END AS chat_user_id
       FROM messages
-      WHERE sender_id = ? OR receiver_id = ?`;
-    const [result] = await db.query(sql, [userId, userId, userId]);
+      WHERE sender_id = $1 OR receiver_id = $1
+    `;
+    const { rows: result } = await db.query(sql, [userId]);
 
     if (!result.length) return res.json([]);
+
     const ids = result.map((r) => r.chat_user_id);
-    const [users] = await db.query("SELECT id, username FROM users WHERE id IN (?)", [ids]);
+
+    // PostgreSQL array handling with ANY($1::int[])
+    const { rows: users } = await db.query(
+      "SELECT id, username FROM users WHERE id = ANY($1::int[])",
+      [ids]
+    );
 
     res.json(users.map((u) => ({ id: String(u.id), username: u.username })));
   } catch (err) {
@@ -168,28 +203,29 @@ app.get("/messages/:userId/:receiverId", verifyToken, async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
 
-    const [rows] = await db.query(
-      `SELECT 
-         id,
-         sender_id AS sender,
-         receiver_id AS receiver,
-         message,
-         status,
-         type,
-         media_url,
-         reply_to,
-         edited,
-         created_at AS createdAt
-       FROM messages
-       WHERE (
-      (sender_id=? AND receiver_id=? AND deleted_by_sender=0)
-      OR
-      (sender_id=? AND receiver_id=? AND deleted_by_receiver=0)
-   )
-       ORDER BY id DESC
-       LIMIT ? OFFSET ?`,
-      [userId, receiverId, receiverId, userId, limit, offset]
-    );
+    const sql = `
+      SELECT 
+        id,
+        sender_id AS sender,
+        receiver_id AS receiver,
+        message,
+        status,
+        type,
+        media_url,
+        reply_to,
+        edited,
+        created_at AS "createdAt"
+      FROM messages
+      WHERE (
+        (sender_id = $1 AND receiver_id = $2 AND deleted_by_sender = false)
+        OR
+        (sender_id = $2 AND receiver_id = $1 AND deleted_by_receiver = false)
+      )
+      ORDER BY id DESC
+      LIMIT $3 OFFSET $4
+    `;
+
+    const { rows } = await db.query(sql, [userId, receiverId, limit, offset]);
 
     // Reverse so oldest messages come first
     const messages = rows.reverse().map((m) => ({
@@ -200,7 +236,15 @@ app.get("/messages/:userId/:receiverId", verifyToken, async (req, res) => {
       status: m.status,
       type: m.type,
       mediaUrl: m.media_url || null,
-      replyTo: (() => {if (!m.reply_to) return null;try {  return typeof m.reply_to === "string"  ? JSON.parse(m.reply_to)  : m.reply_to; } catch (err) { console.error("Reply parse error:", err);  return null; }})(),
+      replyTo: (() => {
+        if (!m.reply_to) return null;
+        try {
+          return typeof m.reply_to === "string" ? JSON.parse(m.reply_to) : m.reply_to;
+        } catch (err) {
+          console.error("Reply parse error:", err);
+          return null;
+        }
+      })(),
       edited: !!m.edited,
       createdAt: m.createdAt,
     }));
@@ -314,31 +358,33 @@ socket.on("sendMessage", async ({ receiver, message, mediaUrl, type, replyTo }) 
   const status = isOnline ? "delivered" : "sent";
 
   try {
-    const [result] = await db.query(
-      `INSERT INTO messages 
-       (sender_id, receiver_id, message, status, type, media_url, reply_to) 
-       VALUES (?,?,?,?,?,?,?)`,
-      [
-        senderId,
-        receiverId,
-        message || null,
-        status,
-        type || "text",
-        mediaUrl || null,
-        replyTo ? JSON.stringify(replyTo) : null  // ✅ SAVE REPLY
-      ]
-    );
+    const sql = `
+      INSERT INTO messages 
+        (sender_id, receiver_id, message, status, type, media_url, reply_to)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING id, created_at AS "createdAt"
+    `;
+
+    const { rows } = await db.query(sql, [
+      senderId,
+      receiverId,
+      message || null,
+      status,
+      type || "text",
+      mediaUrl || null,
+      replyTo ? JSON.stringify(replyTo) : null
+    ]);
 
     const msg = {
-      id: result.insertId,
+      id: rows[0].id,
       sender: senderId,
       receiver: receiverId,
       message: message || "",
       status,
       type: type || "text",
       mediaUrl: mediaUrl || null,
-      replyTo: replyTo || null,   // ✅ EMIT REPLY
-      createdAt: new Date(),
+      replyTo: replyTo || null,
+      createdAt: rows[0].createdAt
     };
 
     socket.emit("receiveMessage", msg);
@@ -356,14 +402,19 @@ socket.on("sendMessage", async ({ receiver, message, mediaUrl, type, replyTo }) 
 
 
   // MESSAGE SEEN
-  socket.on("markSeen", async ({ senderId }) => {
-    const receiverId = socket.userId;
-    await db.query(
-      "UPDATE messages SET status='seen' WHERE sender_id=? AND receiver_id=? AND status!='seen'",
-      [senderId, receiverId]
-    );
-    io.to(String(senderId)).emit("messagesSeen", { senderId: receiverId });
-  });
+socket.on("markSeen", async ({ senderId }) => {
+  const receiverId = socket.userId;
+
+  const sql = `
+    UPDATE messages
+    SET status = 'seen'
+    WHERE sender_id = $1 AND receiver_id = $2 AND status != 'seen'
+  `;
+
+  await db.query(sql, [senderId, receiverId]);
+
+  io.to(String(senderId)).emit("messagesSeen", { senderId: receiverId });
+});
 
 
   /* ================= DELETE MESSAGE ================= */
@@ -371,8 +422,8 @@ socket.on("deleteMessage", async ({ messageId, type }) => {
   try {
     const userId = socket.userId;
 
-    const [rows] = await db.query(
-      "SELECT sender_id, receiver_id FROM messages WHERE id=?",
+    const { rows } = await db.query(
+      "SELECT sender_id, receiver_id FROM messages WHERE id=$1",
       [messageId]
     );
 
@@ -386,12 +437,12 @@ socket.on("deleteMessage", async ({ messageId, type }) => {
     if (type === "me") {
       if (userId == sender_id) {
         await db.query(
-          "UPDATE messages SET deleted_by_sender=1 WHERE id=?",
+          "UPDATE messages SET deleted_by_sender=1 WHERE id=$1",
           [messageId]
         );
       } else {
         await db.query(
-          "UPDATE messages SET deleted_by_receiver=1 WHERE id=?",
+          "UPDATE messages SET deleted_by_receiver=1 WHERE id=$1",
           [messageId]
         );
       }
@@ -406,7 +457,7 @@ if (type === "everyone") {
   if (userId != sender_id) return;
 
   await db.query(
-    "UPDATE messages SET deleted_by_sender=1, deleted_by_receiver=1 WHERE id=?",
+    "UPDATE messages SET deleted_by_sender=1, deleted_by_receiver=TRUE WHERE id=$1",
     [messageId]
   );
 
@@ -433,8 +484,8 @@ socket.on("editMessage", async ({ messageId, newText }) => {
   try {
     const userId = socket.userId;
 
-    const [rows] = await db.query(
-      "SELECT sender_id, receiver_id FROM messages WHERE id=?",
+    const { rows } = await db.query(
+      "SELECT sender_id, receiver_id FROM messages WHERE id=$1",
       [messageId]
     );
 
@@ -446,7 +497,7 @@ socket.on("editMessage", async ({ messageId, newText }) => {
     if (String(sender_id) !== String(userId)) return;
 
     await db.query(
-      "UPDATE messages SET message=?, edited=1 WHERE id=?",
+      "UPDATE messages SET message=$1, edited=1 WHERE id=$2",
       [newText, messageId]
     );
 
@@ -479,13 +530,28 @@ socket.on("editMessage", async ({ messageId, newText }) => {
   socket.on("iceCandidate", ({ to, candidate }) => io.to(to).emit("iceCandidate", { candidate }));
 
   // DISCONNECT
-  socket.on("disconnect", async () => {
+socket.on("disconnect", async () => {
+  try {
     const lastSeen = new Date();
-    await db.query("UPDATE users SET last_seen=? WHERE id=?", [lastSeen, socket.userId]);
+
+    // PostgreSQL: use $1, $2 for parameterized queries
+    await db.query(
+      "UPDATE users SET last_seen=$1 WHERE id=$2",
+      [lastSeen, socket.userId]
+    );
+
+    // Remove from Redis online set
     await redisClient.sRem("onlineUsers", socket.userId);
+
+    // Broadcast updated online users
     await broadcastOnlineUsers();
+
+    // Notify all clients about last seen
     io.emit("lastSeen", { userId: socket.userId, time: lastSeen });
-  });
+  } catch (err) {
+    logger.error("DISCONNECT ERROR:", err);
+  }
+});
 
 
 
