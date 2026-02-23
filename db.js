@@ -1,13 +1,10 @@
+// db.js
+const { Pool } = require("pg");
 require("dotenv").config();
-const mysql = require("mysql2/promise");
 
-const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
-
-if (!dbUrl) {
-  console.error("Available ENV keys:", Object.keys(process.env));
-  throw new Error("No database URL found!");
-}
-
-const pool = mysql.createPool(dbUrl);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }, // Required for Render
+});
 
 module.exports = pool;
