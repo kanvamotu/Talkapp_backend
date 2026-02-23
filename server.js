@@ -351,7 +351,7 @@ io.on("connection", async (socket) => {
   // Track this socket for the user
 if (!userSockets[socket.userId]) userSockets[socket.userId] = [];
 userSockets[socket.userId].push(socket.id);
-  await redisClient.sAdd("onlineUsers", socket.userId);
+  await redisClient.sadd("onlineUsers", socket.userId);
   await broadcastOnlineUsers();
 
   // DELIVER OFFLINE MESSAGES
