@@ -1,12 +1,11 @@
  // server.js
-import cors from 'cors';
-
 const express = require("express");
 const http = require("http");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const socketIO = require("socket.io");
 const multer = require("multer");
+const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 const db = require("./db");
