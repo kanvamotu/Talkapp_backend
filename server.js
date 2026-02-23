@@ -174,9 +174,11 @@ app.get("/users", verifyToken, async (req, res) => {
 /* ================= CHAT USERS ================= */
 app.get("/chat-users/:userId", verifyToken, async (req, res) => {
   try {
-    const userId = req.params.userId;
+    const userId = parseInt(req.params.userId, 10);
+    if (isNaN(userId)) return res.status(400).json({ message: "Invalid userId" });
 
-    // PostgreSQL uses $1, $2, $3 placeholders
+    console.log("Fetching chat users for:", userId);
+
     const sql = `
       SELECT DISTINCT
         CASE WHEN sender_id = $1 THEN receiver_id ELSE sender_id END AS chat_user_id
@@ -184,18 +186,19 @@ app.get("/chat-users/:userId", verifyToken, async (req, res) => {
       WHERE sender_id = $1 OR receiver_id = $1
     `;
     const { rows: result } = await db.query(sql, [userId]);
+    console.log("Chat IDs found:", result.map(r => r.chat_user_id));
 
     if (!result.length) return res.json([]);
 
-    const ids = result.map((r) => r.chat_user_id);
+    const ids = result.map(r => r.chat_user_id);
+    if (!ids.length) return res.json([]);
 
-    // PostgreSQL array handling with ANY($1::int[])
     const { rows: users } = await db.query(
       "SELECT id, username FROM users WHERE id = ANY($1::int[])",
       [ids]
     );
 
-    res.json(users.map((u) => ({ id: String(u.id), username: u.username })));
+    res.json(users.map(u => ({ id: String(u.id), username: u.username })));
   } catch (err) {
     console.error("CHAT USERS ERROR:", err);
     res.status(500).json({ message: "DB error" });
