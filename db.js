@@ -1,10 +1,6 @@
-// db.js
-const { Pool } = require("pg");
 require("dotenv").config();
+const mysql = require("mysql2/promise");
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }, // Required for Render
-});
+const pool = mysql.createPool(process.env.MYSQL_URL);
 
 module.exports = pool;
