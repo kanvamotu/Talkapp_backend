@@ -1,11 +1,13 @@
-require("dotenv").config(); // Load .env variables
+require("dotenv").config();
 const mysql = require("mysql2/promise");
 
+const dbUrl = process.env.DATABASE_URL || process.env.MYSQL_URL;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is not set in environment variables!");
+if (!dbUrl) {
+  console.error("Available ENV keys:", Object.keys(process.env));
+  throw new Error("No database URL found!");
 }
 
-const pool = mysql.createPool(process.env.DATABASE_URL);
+const pool = mysql.createPool(dbUrl);
 
 module.exports = pool;
