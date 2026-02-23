@@ -45,7 +45,7 @@ const generateRefreshToken = (user) =>
   });
 
 /* ================= MIDDLEWARE ================= */
-app.use(cors({ origin: process.env.CLIENT_URL, methods: ['GET', 'POST', 'PUT', 'DELETE'], credentials: true }));
+app.use(cors({ origin: "https://talkky.netlify.app", methods: ['GET', 'POST', 'PUT', 'DELETE'], credentials: true }));
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
