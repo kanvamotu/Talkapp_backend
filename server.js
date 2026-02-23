@@ -1,4 +1,3 @@
- // server.js
 const express = require("express");
 const http = require("http");
 const jwt = require("jsonwebtoken");
@@ -49,7 +48,7 @@ const generateRefreshToken = (user) =>
 app.use(cors({
   origin: "https://talkky.netlify.app",
   methods: ["GET","POST","PUT","DELETE","OPTIONS"],
-  credentials: true
+  credentials: true,
 }));
 
 app.use(express.json());
@@ -316,7 +315,11 @@ app.post("/upload-media", verifyToken, mediaUpload.single("file"), (req, res) =>
 
 /* ================= SOCKET.IO ================= */
 const io = socketIO(server, {
-  cors: { origin: process.env.CLIENT_URL, methods: ["GET", "POST"] },
+  cors: {
+    origin: "https://talkky.netlify.app",
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
 });
 
 io.use((socket, next) => {
