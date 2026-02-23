@@ -46,25 +46,11 @@ const generateRefreshToken = (user) =>
 
 /* ================= MIDDLEWARE ================= */
 // server.js
-const allowedOrigins = ["https://talkky.netlify.app"];
-
 app.use(cors({
-  origin: function(origin, callback) {
-    // allow requests with no origin like mobile apps or Postman
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) === -1) {
-      const msg = "CORS policy does not allow this origin.";
-      return callback(new Error(msg), false);
-    }
-    return callback(null, true);
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: false, // set true ONLY if you use cookies
+  origin: "https://talkky.netlify.app",
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  credentials: true
 }));
-
-// Handle preflight requests for all routes
-app.options("/*", cors());
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
