@@ -1,7 +1,8 @@
  // server.js
+import cors from 'cors';
+
 const express = require("express");
 const http = require("http");
-const cors = require("cors");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const socketIO = require("socket.io");
