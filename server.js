@@ -46,18 +46,11 @@ const generateRefreshToken = (user) =>
 
 /* ================= MIDDLEWARE ================= */
 // server.js
-const corsOptions = {
-  origin: "https://talkky.netlify.app", // frontend URL
+app.use(cors({
+  origin: "https://talkky.netlify.app",
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
-};
-
-app.use(cors(corsOptions));
-
-// Handle OPTIONS preflight globally
-app.options("*", cors(corsOptions));
-
+}));
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
