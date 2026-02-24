@@ -338,7 +338,7 @@ io.use((socket, next) => {
 
 /* ================= ONLINE USERS ================= */
 const broadcastOnlineUsers = async () => {
-  const users = await redisClient.sMembers("onlineUsers");
+  const users = await redisClient.smembers("onlineUsers");
   io.emit("onlineUsers", users);
 };
 
@@ -355,7 +355,7 @@ userSockets[socket.userId].push(socket.id);
   await broadcastOnlineUsers();
 
   // DELIVER OFFLINE MESSAGES
-  const offlineMessages = await redisClient.lRange(`offline:${socket.userId}`, 0, -1);
+  const offlineMessages = await redisClient.lrange(`offline:${socket.userId}`, 0, -1);
   for (const msg of offlineMessages) socket.emit("receiveMessage", JSON.parse(msg));
   await redisClient.del(`offline:${socket.userId}`);
 
@@ -366,7 +366,7 @@ socket.on("sendMessage", async ({ receiver, message, mediaUrl, type, replyTo }) 
 
   const senderId = socket.userId;
   const receiverId = String(receiver);
-  const isOnline = await redisClient.sIsMember("onlineUsers", receiverId);
+  const isOnline = await redisClient.sismember("onlineUsers", receiverId);
   const status = isOnline ? "delivered" : "sent";
 
   try {
@@ -404,7 +404,7 @@ socket.on("sendMessage", async ({ receiver, message, mediaUrl, type, replyTo }) 
     if (isOnline) {
       io.to(receiverId).emit("receiveMessage", msg);
     } else {
-      await redisClient.rPush(`offline:${receiverId}`, JSON.stringify(msg));
+      await redisClient.rpush(`offline:${receiverId}`, JSON.stringify(msg));
     }
 
   } catch (err) {
@@ -553,7 +553,7 @@ socket.on("disconnect", async () => {
     );
 
     // Remove from Redis online set
-    await redisClient.sRem("onlineUsers", socket.userId);
+    await redisClient.srem("onlineUsers", socket.userId);
 
     // Broadcast updated online users
     await broadcastOnlineUsers();
