@@ -13,11 +13,21 @@ const verifyToken = require("./middleware/auth");
 const rateLimit = require("express-rate-limit");
 const logger = require("./logger");
 const crypto = require("crypto");
-
+const fs = require("fs");
+const uploadBase = path.join(__dirname, "uploads");
+const imageDir = path.join(uploadBase, "images");
+const videoDir = path.join(uploadBase, "videos");
+const audioDir = path.join(uploadBase, "audio");
 
 const app = express();
 const server = http.createServer(app);
 const userSockets = {}; // userId => [socketIds]
+
+[uploadBase, imageDir, videoDir, audioDir].forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+});
 
 /* ================= RATE LIMITERS ================= */
 const authLimiter = rateLimit({
@@ -266,12 +276,15 @@ app.get("/messages/:userId/:receiverId", verifyToken, async (req, res) => {
 
 
 
+
 /* ================= AUDIO UPLOAD ================= */
 const audioStorage = multer.diskStorage({
-  destination: "uploads/audio",
+  destination: audioDir,
   filename: (req, file, cb) => cb(null, Date.now() + ".webm"),
 });
+
 const audioUpload = multer({ storage: audioStorage });
+
 app.post("/upload-audio", audioUpload.single("audio"), (req, res) => {
   res.json({
     url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
@@ -282,11 +295,12 @@ app.post("/upload-audio", audioUpload.single("audio"), (req, res) => {
 /* ================= MEDIA UPLOAD ================= */
 const mediaStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (file.mimetype.startsWith("image")) cb(null, "uploads/images");
-    else if (file.mimetype.startsWith("video")) cb(null, "uploads/videos");
+    if (file.mimetype.startsWith("image")) cb(null, imageDir);
+    else if (file.mimetype.startsWith("video")) cb(null, videoDir);
     else cb(new Error("Unsupported file type"), null);
   },
-  filename: (req, file, cb) => cb(null, crypto.randomUUID() + path.extname(file.originalname)),
+  filename: (req, file, cb) =>
+    cb(null, crypto.randomUUID() + path.extname(file.originalname)),
 });
 
 const allowedImageTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
@@ -296,8 +310,10 @@ const mediaUpload = multer({
   storage: mediaStorage,
   limits: { fileSize: 400 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image") && allowedImageTypes.includes(file.mimetype)) cb(null, true);
-    else if (file.mimetype.startsWith("video") && allowedVideoTypes.includes(file.mimetype)) cb(null, true);
+    if (file.mimetype.startsWith("image") && allowedImageTypes.includes(file.mimetype))
+      cb(null, true);
+    else if (file.mimetype.startsWith("video") && allowedVideoTypes.includes(file.mimetype))
+      cb(null, true);
     else cb(new Error("Unsupported file type"));
   },
 });
