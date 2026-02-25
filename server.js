@@ -65,11 +65,15 @@ const generateRefreshToken = (user) =>
 // server.js
 app.use(
   cors({
-    origin: "https://talkky.netlify.app",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    origin: ["https://talkky.netlify.app"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   }),
 );
+
+// VERY IMPORTANT
+app.options("*", cors());
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -307,11 +311,19 @@ const audioStorage = multer.diskStorage({
 
 const audioUpload = multer({ storage: audioStorage });
 
-app.post("/upload-audio", audioUpload.single("audio"), (req, res) => {
-  res.json({
-    url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
-  });
-});
+app.post(
+  "/upload-audio",
+  verifyToken,
+  audioUpload.single("audio"),
+  (req, res) => {
+    if (!req.file)
+      return res.status(400).json({ message: "No audio uploaded" });
+
+    res.json({
+      url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
+    });
+  },
+);
 
 /* ================= MEDIA UPLOAD ================= */
 const mediaStorage = multer.diskStorage({
