@@ -429,7 +429,7 @@ io.on("connection", async (socket) => {
       const senderId = socket.userId;
       const receiverId = String(receiver);
 
-      const isOnline = await redisClient.sIsMember("onlineUsers", receiverId);
+      const isOnline = await redisClient.sismember("onlineUsers", receiverId);
       const status = isOnline ? "delivered" : "sent";
 
       try {
@@ -466,7 +466,7 @@ io.on("connection", async (socket) => {
           io.to(senderId).to(receiverId).emit("receiveMessage", msg);
         } else {
           io.to(senderId).emit("receiveMessage", msg);
-          await redisClient.rPush(`offline:${receiverId}`, JSON.stringify(msg));
+          await redisClient.rpush(`offline:${receiverId}`, JSON.stringify(msg));
         }
       } catch (err) {
         logger.error("MESSAGE INSERT ERROR:", err);
