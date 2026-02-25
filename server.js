@@ -312,7 +312,6 @@ const audioUpload = multer({ storage: audioStorage });
 
 app.post(
   "/upload-audio",
-  verifyToken,
   audioUpload.single("audio"),
   (req, res) => {
     if (!req.file)
