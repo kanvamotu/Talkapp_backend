@@ -18,6 +18,7 @@ const uploadBase = path.join(__dirname, "uploads");
 const imageDir = path.join(uploadBase, "images");
 const videoDir = path.join(uploadBase, "videos");
 const audioDir = path.join(uploadBase, "audio");
+const activeCalls = new Set(); // ✅ ADD THIS LINE
 
 const app = express();
 const server = http.createServer(app);
