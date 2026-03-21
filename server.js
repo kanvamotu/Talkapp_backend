@@ -18,7 +18,7 @@ const uploadBase = path.join(__dirname, "uploads");
 const imageDir = path.join(uploadBase, "images");
 const videoDir = path.join(uploadBase, "videos");
 const audioDir = path.join(uploadBase, "audio");
-const activeCalls = new Set(); 
+const activeCalls = new Set();
 
 const app = express();
 const server = http.createServer(app);
@@ -71,8 +71,6 @@ app.use(
     credentials: true,
   }),
 );
-
-
 
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -310,18 +308,13 @@ const audioStorage = multer.diskStorage({
 
 const audioUpload = multer({ storage: audioStorage });
 
-app.post(
-  "/upload-audio",
-  audioUpload.single("audio"),
-  (req, res) => {
-    if (!req.file)
-      return res.status(400).json({ message: "No audio uploaded" });
+app.post("/upload-audio", audioUpload.single("audio"), (req, res) => {
+  if (!req.file) return res.status(400).json({ message: "No audio uploaded" });
 
-    res.json({
-      url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
-    });
-  },
-);
+  res.json({
+    url: `${process.env.BASE_URL}/uploads/audio/${req.file.filename}`,
+  });
+});
 
 /* ================= MEDIA UPLOAD ================= */
 const mediaStorage = multer.diskStorage({
@@ -592,10 +585,12 @@ io.on("connection", async (socket) => {
   /* ================= CALL SYSTEM ================= */
 
   // CALL USER
+  // store timeout per call
+  const callTimeouts = new Map();
+
   socket.on("callUser", ({ to, offer }) => {
     if (!to || !offer) return;
 
-    // If receiver already in call
     if (activeCalls.has(to)) {
       return socket.emit("userBusy", { to });
     }
@@ -613,12 +608,15 @@ io.on("connection", async (socket) => {
       });
     });
 
-    // 30 sec timeout
-    setTimeout(() => {
-      if (!activeCalls.has(to)) {
+    // ✅ FIX: store timeout
+    const timeout = setTimeout(() => {
+      // only trigger if still NOT accepted
+      if (!activeCalls.has(socket.userId) && !activeCalls.has(to)) {
         socket.emit("callTimeout", { to });
       }
     }, 30000);
+
+    callTimeouts.set(`${socket.userId}-${to}`, timeout);
   });
 
   // ACCEPT CALL
@@ -627,6 +625,19 @@ io.on("connection", async (socket) => {
 
     activeCalls.add(socket.userId);
     activeCalls.add(to);
+
+    // ✅ CLEAR TIMEOUT
+    const key1 = `${to}-${socket.userId}`;
+    const key2 = `${socket.userId}-${to}`;
+
+    if (callTimeouts.has(key1)) {
+      clearTimeout(callTimeouts.get(key1));
+      callTimeouts.delete(key1);
+    }
+    if (callTimeouts.has(key2)) {
+      clearTimeout(callTimeouts.get(key2));
+      callTimeouts.delete(key2);
+    }
 
     const targetSockets = userSockets[to] || [];
 
@@ -648,8 +659,24 @@ io.on("connection", async (socket) => {
 
   // END CALL
   socket.on("endCall", ({ to }) => {
+    if (!to) return;
+
     activeCalls.delete(socket.userId);
     activeCalls.delete(to);
+
+    // clear timeout if exists
+    const key1 = `${socket.userId}-${to}`;
+    const key2 = `${to}-${socket.userId}`;
+
+    if (callTimeouts.has(key1)) {
+      clearTimeout(callTimeouts.get(key1));
+      callTimeouts.delete(key1);
+    }
+
+    if (callTimeouts.has(key2)) {
+      clearTimeout(callTimeouts.get(key2));
+      callTimeouts.delete(key2);
+    }
 
     const targetSockets = userSockets[to] || [];
 
