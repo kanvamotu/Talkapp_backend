@@ -5,10 +5,10 @@ console.log("🚨 DATABASE_URL:", process.env.DATABASE_URL);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
+  ssl: { rejectUnauthorized: false }, // required for Render Postgres
 });
 
-// ✅ FORCE CONNECTION AT START
+// Test connection at startup
 pool.connect()
   .then(() => console.log("✅ PostgreSQL connected"))
   .catch((err) => console.error("❌ PostgreSQL connection error:", err));
